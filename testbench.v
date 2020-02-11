@@ -28,17 +28,18 @@ module testbenchmodule();
 			input_stb = 0;
 			file_output = $fopen("output.txt","w");
 		end
-	
+	/* Read files*/ 
 	always@(posedge CLK or posedge RST)
 		if(!RST)
 			begin
 
 			end
-			
+	/* Write file */
 	always@(posedge CLK or posedge RST)
 		if(output_stb)
 			begin
 			$fwrite(file_output, "%d\n", output_calculator_data);
+			output_calculator_ack <= 1;
 			end
 			
 	reg input_converter_stb;
@@ -54,52 +55,7 @@ module testbenchmodule();
 	wire output_calcualtor_stb;
 	wire [63:0] output_calculator_data;
 	reg output_calculator_ack;
-	
-	reg test_push_stb;
-	reg [5:0] test_push_dat;
-	reg test_pop_stb;
-	wire [5:0] test_pop_dat;
-	
-	initial
-		begin
-			test_push_stb <= 0;
-			test_push_dat <= 0;
-			test_pop_stb <= 0;
-			#1000;
-			@(negedge CLK);
-			test_push_stb <= 1;
-			test_push_dat <= 8'd3; @(negedge CLK);
-			test_push_dat <= 8'd12; @(negedge CLK);
-			test_push_dat <= 8'd2; @(negedge CLK);
-			test_push_dat <= 8'd18; @(negedge CLK);
-			test_push_dat <= 4'd11; @(negedge CLK);
-			test_push_stb <= 0;
-			#1000;
-			@(negedge CLK);
-			test_pop_stb <= 1;	@(negedge CLK);
-			test_pop_stb <= 0; 	   
-			#1100;
-			@(negedge CLK);
-			test_pop_stb <= 1;	@(negedge CLK);
-			test_pop_stb <= 0; 	   
-			#1200;
-			@(negedge CLK);
-			test_pop_stb <= 1;	@(negedge CLK);
-			test_pop_stb <= 0; 
-		end
-stack
-#(
-.WIDTH(4),
-.DEPTH(10)
-)test_stack(
-.CLK(CLK),
-.RST(RST),
-.PUSH_STB(test_push_stb),
-.PUSH_DAT(test_push_dat),
-.POP_STB(test_pop_stb),
-.POP_DAT(test_pop_dat)
 
-);//*/
 converter first_module(	
 	.CLK(CLK),
 	.RST(RST),	   
@@ -129,4 +85,5 @@ calculator second_module(
 	.output_ack(output_calculator_ack)
 );
 	
-endmodule		 	  
+endmodule		 	
+

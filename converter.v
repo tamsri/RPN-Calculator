@@ -124,7 +124,7 @@ always @(posedge CLK or posedge RST)
 		end	
 		4: // Compare operators
 		begin
-			if(input_data[2:1] > pop_data[2:1])
+			if(input_data[1] > pop_data[1])
 				// When op1 has lower priority than stack
 				begin
 					output_data <= pop_data;   	// take top stack out to output
