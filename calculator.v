@@ -18,22 +18,28 @@ module calculator(
 // Stack Variables
 reg push_stb;
 wire [31:0] pop_data;
-reg pop_stack_stb;
-wire [31:0] push_data;
+reg pop_stb;
+reg [31:0] push_data;
 reg [3:0] state;
 
+reg [31:0] right_number;
+reg [31:0] left_number;
 
-wire right_number;
-wire left_number;
-// Initialize Registers
 initial
-	begin
-		output_data <= 1'd0;
-		output_stb <= 1'd0;
-		input_ack <= 1'd0;
-		state <= 4'd0;
-	end
-
+		begin
+			/*IO Registers*/
+			output_data <= 0;
+			output_stb <= 0;
+			input_ack <= 0;
+			/*State Registers*/
+			state <= 0;
+			right_number <= 32'bx;
+			left_number <= 32'bx;
+			/*Stack Registers*/
+			push_stb <= 0;
+			pop_stb <= 0;
+		end
+	
 /*
 State Description
 0: Check type of input after input_stb
@@ -45,19 +51,35 @@ State Description
 6: wait for the output_ack, then go state 0
 */
 always@(posedge CLK or posedge RST)
+	if(RST)
+		begin
+			/*IO Registers*/
+			output_data <= 0;
+			output_stb <= 0;
+			input_ack <= 0;
+			/*State Registers*/
+			state <= 0;
+			right_number <= 32'bx;
+			left_number <= 32'bx;
+			/*Stack Registers*/
+			push_stb <= 0;
+			pop_stb <= 0;
+		end
+	else
 	case(state)
 		0: // Check type of input after input_stb
 		begin
-			input_ack <= 0;
-			output_stb <= 0;
-			pop_stb <= 0;
-			push_stb <= 0;
+			right_number <= 32'bx;
+			left_number <= 32'bx;
 			if(input_stb)
 				begin
-					if(is_input_operator)
+					if(is_input_operator === 1'b1)
 						begin
-						  	if(input_data[2]) state <= 5;
-							else state <= 2;
+						  	if(input_data[2] === 1'b1) 
+								// input == '='
+								state <= 5;
+							else 
+								state <= 2;
 						end
 					else
 						state <= 1;
@@ -67,7 +89,7 @@ always@(posedge CLK or posedge RST)
 		begin
 			push_data <= input_data;
 			push_stb <= 1;
-			state <= 0;
+			state <= 7;
 			input_ack <= 1;
 		end
 		2: // pop the top number to right_number;
@@ -77,15 +99,18 @@ always@(posedge CLK or posedge RST)
 			state <= 3;
 		end
 		3: // pop the top number to left_number;
-		begin		  
-			left_number <= pop_data;
-			state <= 4;
+		begin
+			pop_stb <= 0;
+			if(right_number != 32'bx) // wait for the register get stored 
+				begin
+				left_number <= pop_data;
+				state <= 4;
+				end
 		end	
 		4: // operate left_number and right_number
 		begin
 			pop_stb <= 0;
 			push_stb <= 1;
-			input_ack <= 1;
 			state <= 0;
 			if(input_data[1:0] == 2'b01)
 				push_data <= left_number*right_number;
@@ -98,21 +123,30 @@ always@(posedge CLK or posedge RST)
 		begin
 			output_data <= pop_data;
 			pop_stb <= 1;
-			output_stb <= 1
-			state <= 0;
+			output_stb <= 1;
+			state <= 7;
 		end
 		6: // wait for output_ack
 		begin
 			if(output_ack)
 				begin
 					output_stb <= 0;
-					state <= 0;
+					state <= 7;
+					output_data <= 32'bx;
 				end
+		end
+		7: // end state
+		begin
+			input_ack <= 0;
+			output_stb <= 0;
+			pop_stb <= 0;
+			push_stb <= 0;
+			state <= 0;
 		end
 	endcase
 stack
 #(
-.WIDTH(64),
+.WIDTH(32),
 .DEPTH(20)
 )number_stack(
 .CLK(CLK),
@@ -120,24 +154,8 @@ stack
 .PUSH_STB(push_stb),
 .PUSH_DAT(push_data),
 .POP_STB(pop_stb),
-.POP_DAT(pop_dat)
+.POP_DAT(pop_data)
 
 );
 endmodule		 
-
-module easy1
-(
- input  wire       clk,
- input  wire       rst,
- input  wire       sel,
- input  wire [6:0] a,
- input  wire [6:0] b,
- output reg  [7:0] y
-)
-always@(posedge clk or posedge rst)
- if(rst)      y &lt;= 0;
- else if(sel) y &lt;= a + b;
- else         y &lt;= a - b;
-endmodule
-
 
