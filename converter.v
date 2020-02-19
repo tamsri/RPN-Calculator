@@ -1,6 +1,7 @@
 /*
 Title: Polish Postfix Notation Converter (Shunting-yard algorithm)
 Author: Supawat Tamsri <supawat.tamsri@outlook.com>
+Source: https://github.com/SupawatDev/RPN-Calculator/
 */
 module converter(	
 	input wire CLK,
@@ -12,193 +13,200 @@ module converter(
 	output 	reg input_ack,	
 	// Output variables
 	output reg output_stb,
-	output reg[31:0] output_data,
+	output reg	[31:0] output_data,
 	output 	reg is_output_operator,
 	input 	wire output_ack,
 );
 
-// Stack Variables
-reg push_to_stack_stb; 	// tell stack to remember data
-reg pop_from_stack_stb;	// tell stack to pop the top
-wire [2:0] pop_data; 	// data from stack 
+	// Stack Variables
+	reg push_stb; 	// tell stack to remember data
+	reg pop_stb;	// tell stack to pop the top
+	wire [2:0] pop_data; 	// data from stack 
 
-// States Variables
-reg [3:0] state;
-
-// Initialize registers
-
-initial
-		begin
-		/*IO Registers*/
-		input_ack <= 0;
-		output_stb <= 0;
-		output_data <= 32'bx;
-		is_output_operator <= 1'bx;
-		/*Stack Registers*/
-		push_to_stack_stb <= 0;
-		pop_from_stack_stb <= 0;
-		/*State Registers*/
-		state <= 0;
-		end
-/*
-	Symbols representation
-	'*' == 001
-	'+' == 010
-	'-' == 011
-	'=' == 100
-*/
-/*
-State Description
-0: Check type of input after input_stb
-	- deactivate previous stb, ack.
-	- check type of input
-		if operator == '=', set output_dat, go state:3
-		else if stack is empty, go to state:5
-		else go to state:4
-1: input is number, return input
-	- return numbers
-	- go to state:2
-2: wait for o_ack and go back to state:0
-	- wait for output_ack
-	- then set output_stb <= 0
-3: return an operator and go to state:2
-	- deactivate stack stbs (from 4)
-	- return operator
-	- goto state:2 to wait
-4: compare operators.
-	- check if priority(input) > priority(pop_data)
-		lower, set output = top_stack, push input to stack, go state:3
-		higher, go to state:5
-5: push the input operator to stack
-	- Push input operator to stack
-	- set input_ack
-	- goto state:0
-*/ 
-		
-always @(posedge CLK or posedge RST)
-	if(RST)
-		begin
-		/*IO Registers*/
-		input_ack <= 0;
-		output_stb <= 0;
-		output_data <= 32'bx;
-		is_output_operator <= 1'bx;
-		/*Stack Registers*/
-		push_to_stack_stb <= 0;
-		pop_from_stack_stb <= 0;
-		/*State Registers*/
-		state <= 0;
-		end
-	else 
-	   case(state)
-		   0: //Check type of input after input_stb
-		   begin
-
-		   	if(input_stb)
-			   	begin
-					/*input is an operator*/
-				  	if(is_input_operator == 1)
-						begin
-							if(input_data == 32'b100) // input operator is '='
-									state <= 7;
-						  	else if(pop_data[2:0] === 3'bx ) 
-									state <= 5; // if stack is empty, go to state:6
-							else 
-									state <= 4; // compare operators
-						end
-					/*input is a number*/
-					else state <= 1;
-				end
-			end
-		   1: //input is a number, return input number
-		   	begin
-			  	 output_data <= input_data;
-				 output_stb <= 1;
-				 is_output_operator <= 0; 
-				 state <= 2; 	// wait for the ack from output
-			end
-		   	2: // Wait for output_ack from calculator
-		   begin
-			   if (output_ack)	// testbench already got output
-				   	begin
-					   	output_stb <= 0;
-						output_data <= 32'bx;
-						is_output_operator <= 1'bx;
-					   	state <= 6;
-						input_ack <= 1;
-					end
-			end
-			3: // push an operators out
+	// States Variables
+	reg [2:0] state;
+	// Flag
+	reg is_from_state_2;
+	reg is_from_state_4;
+	/*---------------------- Initialization ------------------------*/
+	initial
 			begin
-				pop_from_stack_stb <= 0; 	//(if from state:4)
-				push_to_stack_stb <= 0; 	 //(if from state:4)
-				is_output_operator <= 1;
-				output_stb <= 1;
-				state <= 2;
-			end	
-			4: // Compare operators
+			/*IO Registers*/
+			input_ack <= 1'b0;
+			output_stb <= 1'b0;
+			output_data <= 32'bx;
+			is_output_operator <= 1'bx;
+			/*Stack Registers*/
+			push_stb <= 1'b0;
+			pop_stb <= 1'b0;
+			/*State Registers*/
+			state <= 3'b0;	
+			is_from_state_2 <= 1'b0;
+			is_from_state_4 <= 1'b0;
+			end
+	
+	/*State Description
+		Symbols representation
+			'*' == 001
+			'+' == 010
+			'-' == 011
+			'=' == 100
+	States
+	0: Check type of input after input_stb
+		- if a number, output number, go state 1
+		- if an operator,
+				if "=", go state 4
+				if empty stack, push to stack, go state 3
+				else, go state 2 (compare ops)
+	1: Wait for o_ack and go back to state:4
+		- if comes from state 4, go back state 4
+		- else, go to state 3
+	2: compare operators.
+		- If input operator is lower, empty stack, go state 4
+		- If Input operator is higher, stack top, state 3
+	3: End states
+		- flip input_ack back back to 0
+		- flip push_stb/pop_stb back to 0
+	4: Empty stack
+		if the input is "="
+			- keep empty stack and '=' at the end
+			- go state 1 (wait for out_ack)
+		if the input is operator
+			- empty stack and push input on stack
+			- go state 3
+	*/ 
+	
+	/*---------------------- Main Module ------------------------*/	
+	always @(posedge CLK or posedge RST)
+		if(RST)
 			begin
-				if(input_data[1] > pop_data[1])
-					// When op1 has lower priority than stack
+			/*IO Registers*/
+			input_ack <= 1'b0;
+			output_stb <= 1'b0;
+			output_data <= 32'bx;
+			is_output_operator <= 1'bx;
+			/*Stack Registers*/
+			push_stb <= 1'b0;
+			pop_stb <= 1'b0;
+			/*State Registers*/
+			state <= 3'b0;	  
+			/*Flags*/
+			is_from_state_2 <= 1'b0;
+			is_from_state_4 <= 1'b0; 
+			end
+		else 
+		case(state)
+			0: //Check type of input after input_stb
+			begin
+				if(input_stb)
 					begin
-						output_data <= pop_data;   	// take top stack out to output
-						pop_from_stack_stb <= 1;	// pop top out from stack
-						push_to_stack_stb <=1;    	// push input_operator to stack
-						state <= 3;				  	// go to state 3
+						/*input is an operator*/
+						if(is_input_operator == 1'b1)
+							begin
+								if(input_data[2:0] === 3'b100) // input operator is '='
+										state <= 3'd4;
+								else if(pop_data[2:0] === 3'bx ) // stack empty
+										begin
+										push_stb <= 1'b1;
+										input_ack <= 1'b1;
+										state <= 3'd3;	
+										end
+								else 
+										state <= 3'd2; // compare operators
+							end
+						/*input is a number*/
+						else 
+							begin
+								output_data <= input_data;
+								output_stb <= 1'b1;
+								is_output_operator <= 1'b0;
+								state <= 3'd1;
+							end
 					end
-				else
-					// When op1 has higher priority than stack
-						state <= 5;
-			end
-			5: // Push an input operator to stack
-			   begin
-					push_to_stack_stb <= 1;
-					input_ack <= 1;
-					state <= 6;	
-			   end
-			6: // End state (delay input_ack)
-				begin
-					input_ack = 0;  // (deactivate input_ack)
-					push_to_stack_stb = 0; // (if comes from state:5
-					state <= 0;
 				end
-			7: // Emptying stack before push "="
-				begin
-					if(pop_data[2:0] === 3'bx)
+				1: // Wait for output_ack from calculator
+			begin
+				pop_stb <= 1'b0;  	// from state 4, 2
+				if (output_ack)	// testbench already got output
 						begin
-							output_data <= input_data;
-							state <= 2;
+							output_stb <= 1'b0;
+							output_data <= 32'bx;
+							is_output_operator <= 1'bx;
+							if(is_from_state_4 === 1'b1)
+								begin
+									is_from_state_4 <= 1'b0;
+									state <= 3'd4; // back to state 4 (continue flushing stack)
+								end
+							else if(is_from_state_2 === 1'b1)
+								begin
+									is_from_state_2 <= 1'b0;
+									state <= 3'd2;	// continue checking top stack
+								end
+							else 
+								begin
+									state <= 3'd3;
+									input_ack <= 1'b1;
+								end
 						end
-					else
+				end
+				2: // Compare operators
+				begin
+					if(input_data[1] >= pop_data[1])
+						// if the input operator has lower pririty, top out stack
 						begin
 							output_data <= pop_data;		
-							pop_from_stack_stb <= 1;
-							state <= 8;
+							pop_stb <= 1'b1;
+							state <= 3'd1;
+							is_from_state_2 <= 1'b1;
+							is_output_operator <= 1'b1;
+							output_stb <= 1'b1;
 						end
-					is_output_operator <= 1'b1;
-					output_stb <= 1;
-				end
-			8: // Wait for output_ack and go back to 7
-			begin
-					pop_from_stack_stb <= 0;
-					if(output_ack)
+					else
+						// When the input operator has higher priority than stack
 						begin
-							output_stb <= 0;
-							is_output_operator <= 1'bx;
-							state <= 7;
+							push_stb <= 1'b1;
+							input_ack <= 1'b1;
+							state <= 3'd3;	
 						end
 				end
-		   endcase
-	   
-stack #(
-.WIDTH(3),
-.DEPTH(20)
-) operator_stack(
-.CLK(CLK),
-.RST(RST),
-.PUSH_STB(push_to_stack_stb),
-.PUSH_DAT(input_data[2:0]),
-.POP_STB(pop_from_stack_stb),
-.POP_DAT(pop_data)
-);
+				3: // End of States (delay input_ack)
+					begin
+						input_ack <= 1'b0;
+						push_stb <= 1'b0;
+						state <= 3'd0;
+					end
+				4: // Flush the stack before push "=" or empty before push new stack
+					begin
+						if(pop_data[2:0] === 3'bx)
+						 // the stack is alaready empty
+							begin
+								state <= 3'd1;
+								output_data <= input_data;
+								output_stb <= 1'b1;
+								is_output_operator <= 1'b1;
+							end
+						else // While the stack is not empty
+							begin
+								output_data <= pop_data;		
+								pop_stb <= 1'b1;
+								state <= 3'd1;
+								is_from_state_4 <= 1'b1;
+								is_output_operator <= 1'b1;
+								output_stb <= 1'b1;
+							end
+
+					end
+			endcase
+			/*---------------------- End Main Module ------------------------*/
+	stack #(
+	.WIDTH(3),
+	.DEPTH(20)
+	) operator_stack(
+	.CLK(CLK),
+	.RST(RST),
+	.PUSH_STB(push_stb),
+	.PUSH_DAT(input_data[2:0]),
+	.POP_STB(pop_stb),
+	.POP_DAT(pop_data)
+	);
 endmodule

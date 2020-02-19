@@ -1,6 +1,7 @@
 /*
-Title: Implemented Stack for minimalize use of width and depth
+Title: Implemented Stack for adjustable bit length and stack depth
 Author: Supawat Tamsri <supawat.tamsri@outlook.com>
+Source: https://github.com/SupawatDev/RPN-Calculator/
 */
 module stack	  
 #( 
@@ -23,9 +24,9 @@ always@(posedge CLK or posedge RST)
 begin
  if(RST) ptr <= 0;
  else if(PUSH_STB)
-  ptr <= ptr +1;  
+  ptr <= ptr + 1;  
  else if(POP_STB)
-  ptr <= ptr -1;
+  ptr <= ptr - 1;
 end
 always@(posedge CLK or posedge RST)
 	if(PUSH_STB)
